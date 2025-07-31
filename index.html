@@ -23,7 +23,12 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-
+        * {
+            -webkit-user-select: none; /* Для Safari и iOS */
+            -moz-user-select: none;    /* Для Firefox */
+            -ms-user-select: none;    /* Для IE/Edge */
+            user-select: none;        /* Стандартное свойство */
+        }
         body {
             font-family: 'Bungee';
             background-color: var(--dark);
@@ -1184,6 +1189,24 @@
         window.addEventListener('beforeunload', () => {
             stopGame();
             saveGame();
+        });
+
+        // Дополнительно: блокировка выделения текста через JS (на случай, если CSS не сработает)
+        document.addEventListener('selectstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // Блокировка перетаскивания (drag-and-drop) изображений и других элементов
+        document.addEventListener('dragstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        document.addEventListener('copy', function(e) {
+            e.preventDefault();
+            e.clipboardData.setData('text/plain', 'Копирование запрещено!');
+            return false;
         });
     </script>
 </body>
