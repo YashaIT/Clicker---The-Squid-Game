@@ -24,10 +24,10 @@
             -webkit-tap-highlight-color: transparent;
         }
         * {
-            -webkit-user-select: none; /* Для Safari и iOS */
-            -moz-user-select: none;    /* Для Firefox */
-            -ms-user-select: none;    /* Для IE/Edge */
-            user-select: none;        /* Стандартное свойство */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
         body {
             font-family: 'Bungee';
@@ -580,47 +580,236 @@
         <!-- Попап повышения уровня -->
         <div id="level-up-popup">
             <h2>НОВЫЙ УРОВЕНЬ!</h2>
-        <p>Вы достигли уровня <span id="new-level">2</span>!</p>
-        <div id="unlock-message">Разблокирована новая функция!</div>
-        <div id="character-select">
-            <div class="character-option selected" style="background-image: url('images/character1.png');" onclick="selectCharacter(1)"></div>
-            <div class="character-option" style="background-image: url('images/character2.png');" onclick="selectCharacter(2)"></div>
-            <div class="character-option" style="background-image: url('images/character3.png');" onclick="selectCharacter(3)"></div>
-            <div class="character-option" style="background-image: url('images/character4.png');" onclick="selectCharacter(4)"></div>
-        </div>
-        <div id="background-select">
-            <div class="background-option selected" style="background-image: url('images/background1.png');" onclick="selectBackground(1)"></div>
-            <div class="background-option" style="background-image: url('images/background2.png');" onclick="selectBackground(2)"></div>
-            <div class="background-option" style="background-image: url('images/background3.png');" onclick="selectBackground(3)"></div>
-            <div class="background-option" style="background-image: url('images/background4.png');" onclick="selectBackground(4)"></div>
-        </div>
-        <button class="menu-button" onclick="hideLevelUp()">Продолжить</button>
+            <p>Вы достигли уровня <span id="new-level">2</span>!</p>
+            <div id="unlock-message">Разблокирована новая функция!</div>
+            <div id="character-select">
+                <div class="character-option selected" style="background-image: url('images/character1.png');" onclick="selectCharacter(1)"></div>
+                <div class="character-option" style="background-image: url('images/character2.png');" onclick="selectCharacter(2)"></div>
+                <div class="character-option" style="background-image: url('images/character3.png');" onclick="selectCharacter(3)"></div>
+                <div class="character-option" style="background-image: url('images/character4.png');" onclick="selectCharacter(4)"></div>
+            </div>
+            <div id="background-select">
+                <div class="background-option selected" style="background-image: url('images/background1.png');" onclick="selectBackground(1)"></div>
+                <div class="background-option" style="background-image: url('images/background2.png');" onclick="selectBackground(2)"></div>
+                <div class="background-option" style="background-image: url('images/background3.png');" onclick="selectBackground(3)"></div>
+                <div class="background-option" style="background-image: url('images/background4.png');" onclick="selectBackground(4)"></div>
+            </div>
+            <button class="menu-button" onclick="hideLevelUp()">Продолжить</button>
         </div>
     </div>
 
-    <!-- Аудио элементы -->
-    <audio id="click-sound" src="sounds/click.mp3"></audio>
-    <audio id="upgrade-sound" src="sounds/upgrade.mp3"></audio>
-    <audio id="levelup-sound" src="sounds/levelup.mp3"></audio>
-    <audio id="background-music" loop src="sounds/background.mp3"></audio>
-
     <script>
-        // Блокировка контекстного меню
+        // Блокировка контекстного меню и выделения
         document.addEventListener('contextmenu', function(e) {
             e.preventDefault();
             return false;
-        });
+        }, { passive: false });
+
+        document.addEventListener('selectstart', function(e) {
+            e.preventDefault();
+            return false;
+        }, { passive: false });
+
+        // Инициализация Web Audio API
+        let audioContext;
+        let clickSoundBuffer, upgradeSoundBuffer, levelupSoundBuffer, backgroundMusicBuffer;
+        let backgroundMusicSource;
+        let isAudioInitialized = false;
+
+        async function initAudio() {
+            try {
+                // Создаем аудиоконтекст после пользовательского взаимодействия
+                document.addEventListener('click', function init() {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    document.removeEventListener('click', init);
+                }, { once: true });
+
+                // Инициализируем аудио после первого клика
+                document.addEventListener('click', async function() {
+                    if (!audioContext) return;
+                    
+                    try {
+                        // Загружаем аудиофайлы
+                        const loadAudio = async (url) => {
+                            const response = await fetch(url);
+                            const arrayBuffer = await response.arrayBuffer();
+                            return await audioContext.decodeAudioData(arrayBuffer);
+                        };
+
+                        [clickSoundBuffer, upgradeSoundBuffer, levelupSoundBuffer, backgroundMusicBuffer] = await Promise.all([
+                            loadAudio('sounds/click.mp3'),
+                            loadAudio('sounds/upgrade.mp3'),
+                            loadAudio('sounds/levelup.mp3'),
+                            loadAudio('sounds/background.mp3')
+                        ]);
+
+                        isAudioInitialized = true;
+                        console.log('Audio initialized with Web Audio API');
+                    } catch (error) {
+                        console.error('Audio initialization failed:', error);
+                        isAudioInitialized = false;
+                    }
+                }, { once: true });
+            } catch (error) {
+                console.error('Web Audio API not supported:', error);
+                isAudioInitialized = false;
+            }
+        }
+
+        function playWebSound(buffer, loop = false) {
+            if (!isAudioInitialized || !gameState.audioEnabled || !audioContext) return;
+            
+            try {
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.loop = loop;
+                source.start(0);
+                
+                if (loop) {
+                    return source;
+                }
+            } catch (error) {
+                console.error('Error playing sound:', error);
+            }
+            return null;
+        }
+
+        function playSound(type) {
+            if (!gameState.audioEnabled) return;
+            
+            if (isAudioInitialized && audioContext) {
+                try {
+                    switch (type) {
+                        case 'click':
+                            playWebSound(clickSoundBuffer);
+                            break;
+                        case 'upgrade':
+                            playWebSound(upgradeSoundBuffer);
+                            break;
+                        case 'levelup':
+                            playWebSound(levelupSoundBuffer);
+                            break;
+                        case 'background':
+                            if (backgroundMusicSource) {
+                                backgroundMusicSource.stop();
+                            }
+                            backgroundMusicSource = playWebSound(backgroundMusicBuffer, true);
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Error playing sound:', error);
+                }
+            }
+        }
 
         // Инициализация Яндекс SDK
         let ysdk;
-        YaGames.init().then(sdk => {
-            ysdk = sdk;
-            console.log('Yandex SDK initialized');
-            initGame();
-        }).catch(err => {
-            console.error('Failed to initialize Yandex SDK:', err);
-            initGame();
-        });
+        let gameLanguage = 'ru';
+
+        // Поддержка языков
+        const translations = {
+            ru: {
+                title: "КЛИКЕР КАЛЬМАРА",
+                loading: "Загрузка игры...",
+                money: "💰",
+                level: "🏆",
+                cps: "⚡",
+                perSecond: "/сек",
+                levelText: "Уровень",
+                soldier: "Розовый Солдат",
+                guards: "Отряд Охранников",
+                elite: "Элитная Охрана",
+                frontman: "Фронтмен",
+                organizer: "Организатор",
+                newLevel: "НОВЫЙ УРОВЕНЬ!",
+                reachedLevel: "Вы достигли уровня",
+                character: "Персонаж",
+                continue: "Продолжить",
+                clickDesc: "+0.1 клик/сек",
+                guardsDesc: "+0.5 клик/сек",
+                eliteDesc: "+1 клик/сек",
+                frontmanDesc: "x2 все клики",
+                organizerDesc: "x3 все клики",
+                owned: "Куплено"
+            },
+            en: {
+                title: "SQUID CLICKER",
+                loading: "Loading game...",
+                money: "💰",
+                level: "🏆",
+                cps: "⚡",
+                perSecond: "/sec",
+                levelText: "Level",
+                soldier: "Pink Soldier",
+                guards: "Squad of Guards",
+                elite: "Elite Guard",
+                frontman: "Frontman",
+                organizer: "Organizer",
+                newLevel: "NEW LEVEL!",
+                reachedLevel: "You reached level",
+                character: "Character",
+                continue: "Continue",
+                clickDesc: "+0.1 click/sec",
+                guardsDesc: "+0.5 click/sec",
+                eliteDesc: "+1 click/sec",
+                frontmanDesc: "x2 all clicks",
+                organizerDesc: "x3 all clicks",
+                owned: "Owned"
+            }
+        };
+
+        function applyLanguageSettings() {
+            const lang = translations[gameLanguage] || translations.ru;
+            
+            // Обновляем элементы интерфейса
+            const elements = {
+                '.title': lang.title,
+                '.loading-text': lang.loading,
+                '#upgrade-1-name': lang.soldier,
+                '#upgrade-2-name': lang.guards,
+                '#upgrade-3-name': lang.elite,
+                '#upgrade-4-name': lang.frontman,
+                '#upgrade-5-name': lang.organizer,
+                '#upgrade-1-desc': lang.clickDesc,
+                '#upgrade-2-desc': lang.guardsDesc,
+                '#upgrade-3-desc': lang.eliteDesc,
+                '#upgrade-4-desc': lang.frontmanDesc,
+                '#upgrade-5-desc': lang.organizerDesc,
+                '.level-text': lang.levelText,
+                '#new-level': lang.reachedLevel,
+                '.character-button': lang.character,
+                '.continue-button': lang.continue
+            };
+            
+            for (const [selector, text] of Object.entries(elements)) {
+                const element = document.querySelector(selector);
+                if (element) element.textContent = text;
+            }
+        }
+
+        // Инициализация игры через Яндекс SDK
+        async function initYandexSDK() {
+            try {
+                ysdk = await YaGames.init();
+                console.log('Yandex SDK initialized');
+                
+                // Определяем язык из SDK
+                gameLanguage = ysdk.environment.i18n.lang || 'ru';
+                applyLanguageSettings();
+                
+                // Инициализируем аудио
+                await initAudio();
+                
+                // Запускаем игру
+                initGame();
+            } catch (err) {
+                console.error('Failed to initialize Yandex SDK:', err);
+                // Запасной вариант инициализации
+                await initAudio();
+                initGame();
+            }
+        }
 
         // Игровые переменные
         let gameState = {
@@ -676,10 +865,6 @@
         const levelUpPopup = document.getElementById('level-up-popup');
         const newLevelDisplay = document.getElementById('new-level');
         const unlockMessage = document.getElementById('unlock-message');
-        const clickSound = document.getElementById('click-sound');
-        const upgradeSound = document.getElementById('upgrade-sound');
-        const levelupSound = document.getElementById('levelup-sound');
-        const backgroundMusic = document.getElementById('background-music');
         const loadingBar = document.getElementById('loading-bar');
         const soundToggle = document.getElementById('sound-toggle');
 
@@ -695,6 +880,13 @@
                     setTimeout(() => {
                         preloader.style.display = 'none';
                         gameContainer.style.display = 'flex';
+                        
+                        // Уведомляем SDK, что игра готова
+                        if (ysdk && ysdk.features.LoadingAPI) {
+                            ysdk.features.LoadingAPI.ready();
+                            console.log('Game ready notification sent to Yandex SDK');
+                        }
+                        
                         startGame();
                     }, 500);
                 }
@@ -716,8 +908,24 @@
 
         // Настройка обработчиков событий
         function setupEventListeners() {
+            // Обработчики кликов с поддержкой touch
             clickTarget.addEventListener('click', handleClick);
-            clickTarget.addEventListener('touchstart', handleClick);
+            clickTarget.addEventListener('touchstart', handleClick, { passive: true });
+            
+            // Блокировка масштабирования на мобильных устройствах
+            document.addEventListener('gesturestart', function(e) {
+                e.preventDefault();
+            }, { passive: false });
+            
+            // Блокировка двойного тапа для масштабирования
+            let lastTouchTime = 0;
+            document.addEventListener('touchend', function(event) {
+                const now = new Date().getTime();
+                if (now - lastTouchTime <= 300) {
+                    event.preventDefault();
+                }
+                lastTouchTime = now;
+            }, { passive: false });
         }
 
         // Обработка клика
@@ -729,7 +937,7 @@
             
             // Эффект клика
             createClickEffect();
-            playSound(clickSound);
+            playSound('click');
             
             // Проверка уровня
             checkLevelUp();
@@ -798,48 +1006,7 @@
                 effect.remove();
             }, 500);
         }
-        function updateBackgroundSelect() {
-            const container = document.getElementById('background-select');
-            container.innerHTML = '';
-            
-            backgrounds.forEach(background => {
-                if (gameState.unlockedBackgrounds.includes(background.id)) {
-                    const option = document.createElement('div');
-                    option.className = `background-option ${gameState.selectedBackground === background.id ? 'selected' : ''}`;
-                    option.style.backgroundImage = `url('${background.image}')`;
-                    option.onclick = () => selectBackground(background.id);
-                    container.appendChild(option);
-                }
-            });
-        }
 
-        // Выбор фона
-        function selectBackground(id) {
-            if (gameState.unlockedBackgrounds.includes(id)) {
-                gameState.selectedBackground = id;
-                const background = backgrounds.find(b => b.id === id);
-                document.body.style.backgroundImage = `url('${background.image}')`;
-                saveGame();
-                
-                // Обновление выбранного фона в UI
-                document.querySelectorAll('.background-option').forEach(el => {
-                    el.classList.remove('selected');
-                });
-                event.target.classList.add('selected');
-            }
-        }
-
-        // В функции showLevelUp() добавить обновление фонов:
-        function showLevelUp() {
-            newLevelDisplay.textContent = gameState.level;
-            levelUpPopup.style.display = 'block';
-            playSound(levelupSound);
-            createConfetti();
-            
-            // Обновление доступных персонажей и фонов
-            updateCharacterSelect();
-            updateBackgroundSelect();
-        }
         // Проверка повышения уровня
         function checkLevelUp() {
             if (gameState.levelProgress >= gameState.levelRequirement) {
@@ -888,11 +1055,12 @@
         function showLevelUp() {
             newLevelDisplay.textContent = gameState.level;
             levelUpPopup.style.display = 'block';
-            playSound(levelupSound);
+            playSound('levelup');
             createConfetti();
             
-            // Обновление доступных персонажей
+            // Обновление доступных персонажей и фонов
             updateCharacterSelect();
+            updateBackgroundSelect();
         }
 
         // Обновление выбора персонажей
@@ -906,6 +1074,22 @@
                     option.className = `character-option ${gameState.selectedCharacter === character.id ? 'selected' : ''}`;
                     option.style.backgroundImage = `url('${character.image}')`;
                     option.onclick = () => selectCharacter(character.id);
+                    container.appendChild(option);
+                }
+            });
+        }
+
+        // Обновление выбора фонов
+        function updateBackgroundSelect() {
+            const container = document.getElementById('background-select');
+            container.innerHTML = '';
+            
+            backgrounds.forEach(background => {
+                if (gameState.unlockedBackgrounds.includes(background.id)) {
+                    const option = document.createElement('div');
+                    option.className = `background-option ${gameState.selectedBackground === background.id ? 'selected' : ''}`;
+                    option.style.backgroundImage = `url('${background.image}')`;
+                    option.onclick = () => selectBackground(background.id);
                     container.appendChild(option);
                 }
             });
@@ -952,7 +1136,7 @@
                 
                 // Обновление UI
                 updateUI();
-                playSound(upgradeSound);
+                playSound('upgrade');
                 
                 // Сохранение игры
                 saveGame();
@@ -984,28 +1168,7 @@
 
         // Показать кастомизацию
         function showCustomization() {
-            // Показываем попап уровня, который содержит выбор персонажа
             showLevelUp();
-        }
-
-        // Переключение звука
-        function toggleSound() {
-            gameState.audioEnabled = !gameState.audioEnabled;
-            gameState.musicEnabled = gameState.audioEnabled;
-            toggleSoundUI();
-            saveGame();
-        }
-
-        // Обновление UI звука
-        function toggleSoundUI() {
-            if (gameState.musicEnabled) {
-                backgroundMusic.volume = 0.3;
-                backgroundMusic.play().catch(e => console.log('Music play error:', e));
-                soundToggle.classList.remove('muted');
-            } else {
-                backgroundMusic.pause();
-                soundToggle.classList.add('muted');
-            }
         }
 
         // Выбор персонажа
@@ -1021,6 +1184,44 @@
                     el.classList.remove('selected');
                 });
                 event.target.classList.add('selected');
+            }
+        }
+
+        // Выбор фона
+        function selectBackground(id) {
+            if (gameState.unlockedBackgrounds.includes(id)) {
+                gameState.selectedBackground = id;
+                const background = backgrounds.find(b => b.id === id);
+                document.body.style.backgroundImage = `url('${background.image}')`;
+                saveGame();
+                
+                // Обновление выбранного фона в UI
+                document.querySelectorAll('.background-option').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                event.target.classList.add('selected');
+            }
+        }
+
+        // Переключение звука
+        function toggleSound() {
+            gameState.audioEnabled = !gameState.audioEnabled;
+            gameState.musicEnabled = gameState.audioEnabled;
+            toggleSoundUI();
+            saveGame();
+        }
+
+        // Обновление UI звука
+        function toggleSoundUI() {
+            if (gameState.musicEnabled) {
+                playSound('background');
+                soundToggle.classList.remove('muted');
+            } else {
+                if (backgroundMusicSource) {
+                    backgroundMusicSource.stop();
+                    backgroundMusicSource = null;
+                }
+                soundToggle.classList.add('muted');
             }
         }
 
@@ -1062,63 +1263,77 @@
             return Math.floor(num);
         }
 
-        // Воспроизведение звука
-        function playSound(sound) {
-            if (!gameState.audioEnabled) return;
-            
-            sound.currentTime = 0;
-            sound.play().catch(e => console.log('Sound play error:', e));
-        }
-
         // Загрузка игры
         function loadGame() {
+            // Сначала пробуем загрузить из облачного хранилища Яндекс
+            if (ysdk && ysdk.features.StorageAPI) {
+                ysdk.features.StorageAPI.getItem('squidClickerSave').then(savedData => {
+                    if (savedData) {
+                        applySaveData(JSON.parse(savedData));
+                    } else {
+                        // Если в облаке нет, пробуем локальное хранилище
+                        loadFromLocalStorage();
+                    }
+                }).catch(err => {
+                    console.error('Failed to load from Yandex cloud storage:', err);
+                    loadFromLocalStorage();
+                });
+            } else {
+                // Только локальное хранилище
+                loadFromLocalStorage();
+            }
+        }
+
+        function loadFromLocalStorage() {
             const savedData = localStorage.getItem('squidClickerSave');
             if (savedData) {
-                const data = JSON.parse(savedData);
-                
-                // Обновляем состояние игры
-                gameState.money = data.money || 0;
-                gameState.level = data.level || 1;
-                gameState.levelProgress = data.levelProgress || 0;
-                gameState.levelRequirement = data.levelRequirement || 100;
-                gameState.totalClicks = data.totalClicks || 0;
-                gameState.cps = data.cps || 0;
-                gameState.playTime = data.playTime || 0;
-                gameState.audioEnabled = data.audioEnabled !== undefined ? data.audioEnabled : true;
-                gameState.musicEnabled = data.musicEnabled !== undefined ? data.musicEnabled : true;
-                gameState.selectedCharacter = data.selectedCharacter || 1;
-                gameState.selectedBackground = data.selectedBackground || 1;
-                gameState.unlockedCharacters = data.unlockedCharacters || [1];
-                gameState.unlockedBackgrounds = data.unlockedBackgrounds || [1];
-                
-                // Обновляем улучшения
-                if (data.upgrades) {
-                    gameState.upgrades.forEach(upgrade => {
-                        const savedUpgrade = data.upgrades.find(u => u.id === upgrade.id);
-                        if (savedUpgrade) {
-                            upgrade.price = savedUpgrade.price;
-                            upgrade.count = savedUpgrade.count;
-                        }
-                    });
-                }
-                
-                // Применяем выбранные персонаж и фон
-                const character = characters.find(c => c.id === gameState.selectedCharacter);
-                if (character) {
-                    clickTarget.style.backgroundImage = `url('${character.image}')`;
-                }
-                
-                const background = backgrounds.find(b => b.id === gameState.selectedBackground);
-                if (background) {
-                    document.body.style.backgroundImage = `url('${background.image}')`;
-                }
-                
-                // Пересчет CPS
-                gameState.cps = calculateCPS();
-                
-                // Обновление UI звука
-                toggleSoundUI();
+                applySaveData(JSON.parse(savedData));
             }
+        }
+
+        function applySaveData(data) {
+            // Обновляем состояние игры
+            gameState.money = data.money || 0;
+            gameState.level = data.level || 1;
+            gameState.levelProgress = data.levelProgress || 0;
+            gameState.levelRequirement = data.levelRequirement || 100;
+            gameState.totalClicks = data.totalClicks || 0;
+            gameState.cps = data.cps || 0;
+            gameState.playTime = data.playTime || 0;
+            gameState.audioEnabled = data.audioEnabled !== undefined ? data.audioEnabled : true;
+            gameState.musicEnabled = data.musicEnabled !== undefined ? data.musicEnabled : true;
+            gameState.selectedCharacter = data.selectedCharacter || 1;
+            gameState.selectedBackground = data.selectedBackground || 1;
+            gameState.unlockedCharacters = data.unlockedCharacters || [1];
+            gameState.unlockedBackgrounds = data.unlockedBackgrounds || [1];
+            
+            // Обновляем улучшения
+            if (data.upgrades) {
+                gameState.upgrades.forEach(upgrade => {
+                    const savedUpgrade = data.upgrades.find(u => u.id === upgrade.id);
+                    if (savedUpgrade) {
+                        upgrade.price = savedUpgrade.price;
+                        upgrade.count = savedUpgrade.count;
+                    }
+                });
+            }
+            
+            // Применяем выбранные персонаж и фон
+            const character = characters.find(c => c.id === gameState.selectedCharacter);
+            if (character) {
+                clickTarget.style.backgroundImage = `url('${character.image}')`;
+            }
+            
+            const background = backgrounds.find(b => b.id === gameState.selectedBackground);
+            if (background) {
+                document.body.style.backgroundImage = `url('${background.image}')`;
+            }
+            
+            // Пересчет CPS
+            gameState.cps = calculateCPS();
+            
+            // Обновление UI звука
+            toggleSoundUI();
         }
 
         // Сохранение игры
@@ -1127,7 +1342,9 @@
             
             // Сохранение в облако Яндекс
             if (ysdk && ysdk.features.StorageAPI) {
-                ysdk.features.StorageAPI.setItem('squidClickerSave', JSON.stringify(gameState));
+                ysdk.features.StorageAPI.setItem('squidClickerSave', JSON.stringify(gameState)).catch(err => {
+                    console.error('Failed to save to Yandex cloud storage:', err);
+                });
             }
             
             // Обновление таблицы лидеров
@@ -1158,8 +1375,11 @@
 
         // Запуск игры
         function startGame() {
-            // Сообщаем SDK о начале игры
-            ysdk.features.GameplayAPI?.start();
+            // Уведомляем SDK о начале игрового процесса
+            if (ysdk && ysdk.features.GameplayAPI) {
+                ysdk.features.GameplayAPI.start();
+                console.log('Gameplay started notification sent to Yandex SDK');
+            }
             
             // Запускаем автокликеры
             startAutoClickers();
@@ -1172,8 +1392,11 @@
 
         // Остановка игры
         function stopGame() {
-            // Сообщаем SDK о паузе/остановке игры
-            ysdk.features.GameplayAPI?.stop();
+            // Уведомляем SDK о паузе/остановке игры
+            if (ysdk && ysdk.features.GameplayAPI) {
+                ysdk.features.GameplayAPI.stop();
+                console.log('Gameplay stopped notification sent to Yandex SDK');
+            }
         }
 
         // Обработчик видимости страницы для GameplayAPI
@@ -1191,23 +1414,8 @@
             saveGame();
         });
 
-        // Дополнительно: блокировка выделения текста через JS (на случай, если CSS не сработает)
-        document.addEventListener('selectstart', function(e) {
-            e.preventDefault();
-            return false;
-        });
-
-        // Блокировка перетаскивания (drag-and-drop) изображений и других элементов
-        document.addEventListener('dragstart', function(e) {
-            e.preventDefault();
-            return false;
-        });
-
-        document.addEventListener('copy', function(e) {
-            e.preventDefault();
-            e.clipboardData.setData('text/plain', 'Копирование запрещено!');
-            return false;
-        });
+        // Инициализация игры через Яндекс SDK
+        initYandexSDK();
     </script>
 </body>
 </html>
