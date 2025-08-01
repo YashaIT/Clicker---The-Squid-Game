@@ -23,12 +23,7 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-        * {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-        }
+        
         body {
             font-family: 'Bungee';
             background-color: var(--dark);
@@ -449,7 +444,7 @@
             animation: float 3s ease-in-out infinite;
         }
 
-         #background-select {
+        #background-select {
             display: flex;
             justify-content: center;
             flex-wrap: wrap;
@@ -610,206 +605,113 @@
             return false;
         }, { passive: false });
 
-        // Инициализация Web Audio API
+        // ==================== Web Audio API Implementation ====================
         let audioContext;
-        let clickSoundBuffer, upgradeSoundBuffer, levelupSoundBuffer, backgroundMusicBuffer;
-        let backgroundMusicSource;
-        let isAudioInitialized = false;
+        let audioBuffers = {};
+        let backgroundMusicNode = null;
+        let isAudioEnabled = true;
 
+        // Инициализация аудио
         async function initAudio() {
             try {
-                // Создаем аудиоконтекст после пользовательского взаимодействия
-                document.addEventListener('click', function init() {
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    document.removeEventListener('click', init);
-                }, { once: true });
-
-                // Инициализируем аудио после первого клика
-                document.addEventListener('click', async function() {
-                    if (!audioContext) return;
-                    
+                // Создаем аудиоконтекст только после пользовательского действия
+                document.addEventListener('click', function initAudioContext() {
                     try {
-                        // Загружаем аудиофайлы
-                        const loadAudio = async (url) => {
-                            const response = await fetch(url);
-                            const arrayBuffer = await response.arrayBuffer();
-                            return await audioContext.decodeAudioData(arrayBuffer);
-                        };
-
-                        [clickSoundBuffer, upgradeSoundBuffer, levelupSoundBuffer, backgroundMusicBuffer] = await Promise.all([
-                            loadAudio('sounds/click.mp3'),
-                            loadAudio('sounds/upgrade.mp3'),
-                            loadAudio('sounds/levelup.mp3'),
-                            loadAudio('sounds/background.mp3')
-                        ]);
-
-                        isAudioInitialized = true;
-                        console.log('Audio initialized with Web Audio API');
+                        if (!audioContext) {
+                            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                            console.log('AudioContext created');
+                            loadAllAudio(); // Загружаем звуки после создания контекста
+                        }
                     } catch (error) {
-                        console.error('Audio initialization failed:', error);
-                        isAudioInitialized = false;
+                        console.error('Error creating AudioContext:', error);
                     }
+                    document.removeEventListener('click', initAudioContext);
                 }, { once: true });
             } catch (error) {
-                console.error('Web Audio API not supported:', error);
-                isAudioInitialized = false;
+                console.error('Audio initialization failed:', error);
             }
         }
 
-        function playWebSound(buffer, loop = false) {
-            if (!isAudioInitialized || !gameState.audioEnabled || !audioContext) return;
-            
+        // Загрузка всех звуков
+        async function loadAllAudio() {
+            if (!audioContext) return;
+
+            const audioFiles = {
+                click: 'sounds/click.mp3',
+                upgrade: 'sounds/upgrade.mp3',
+                levelup: 'sounds/levelup.mp3',
+                background: 'sounds/background.mp3'
+            };
+
+            try {
+                for (const [name, url] of Object.entries(audioFiles)) {
+                    try {
+                        const response = await fetch(url);
+                        const arrayBuffer = await response.arrayBuffer();
+                        audioBuffers[name] = await audioContext.decodeAudioData(arrayBuffer);
+                        console.log(`Loaded audio: ${name}`);
+                    } catch (error) {
+                        console.error(`Error loading ${name}:`, error);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading audio files:', error);
+            }
+        }
+
+        // Воспроизведение звука
+        function playSound(name, loop = false) {
+            if (!isAudioEnabled || !audioContext || !audioBuffers[name]) return null;
+
             try {
                 const source = audioContext.createBufferSource();
-                source.buffer = buffer;
+                source.buffer = audioBuffers[name];
                 source.connect(audioContext.destination);
                 source.loop = loop;
                 source.start(0);
-                
-                if (loop) {
-                    return source;
+
+                if (name === 'background') {
+                    // Останавливаем предыдущую фоновую музыку
+                    if (backgroundMusicNode) {
+                        backgroundMusicNode.stop();
+                    }
+                    backgroundMusicNode = source;
                 }
+
+                return source;
             } catch (error) {
                 console.error('Error playing sound:', error);
+                return null;
             }
-            return null;
         }
 
-        function playSound(type) {
-            if (!gameState.audioEnabled) return;
+        // Переключение звука
+        function toggleSound() {
+            isAudioEnabled = !isAudioEnabled;
+            const soundButton = document.getElementById('sound-toggle');
             
-            if (isAudioInitialized && audioContext) {
-                try {
-                    switch (type) {
-                        case 'click':
-                            playWebSound(clickSoundBuffer);
-                            break;
-                        case 'upgrade':
-                            playWebSound(upgradeSoundBuffer);
-                            break;
-                        case 'levelup':
-                            playWebSound(levelupSoundBuffer);
-                            break;
-                        case 'background':
-                            if (backgroundMusicSource) {
-                                backgroundMusicSource.stop();
-                            }
-                            backgroundMusicSource = playWebSound(backgroundMusicBuffer, true);
-                            break;
-                    }
-                } catch (error) {
-                    console.error('Error playing sound:', error);
+            if (isAudioEnabled) {
+                soundButton.classList.remove('muted');
+                playSound('background', true);
+            } else {
+                soundButton.classList.add('muted');
+                if (backgroundMusicNode) {
+                    backgroundMusicNode.stop();
+                    backgroundMusicNode = null;
                 }
             }
+            
+            // Сохраняем настройки звука
+            if (gameState) {
+                gameState.audioEnabled = isAudioEnabled;
+                gameState.musicEnabled = isAudioEnabled;
+                saveGame();
+            }
         }
 
-        // Инициализация Яндекс SDK
+        // ==================== Game Initialization ====================
         let ysdk;
         let gameLanguage = 'ru';
-
-        // Поддержка языков
-        const translations = {
-            ru: {
-                title: "КЛИКЕР КАЛЬМАРА",
-                loading: "Загрузка игры...",
-                money: "💰",
-                level: "🏆",
-                cps: "⚡",
-                perSecond: "/сек",
-                levelText: "Уровень",
-                soldier: "Розовый Солдат",
-                guards: "Отряд Охранников",
-                elite: "Элитная Охрана",
-                frontman: "Фронтмен",
-                organizer: "Организатор",
-                newLevel: "НОВЫЙ УРОВЕНЬ!",
-                reachedLevel: "Вы достигли уровня",
-                character: "Персонаж",
-                continue: "Продолжить",
-                clickDesc: "+0.1 клик/сек",
-                guardsDesc: "+0.5 клик/сек",
-                eliteDesc: "+1 клик/сек",
-                frontmanDesc: "x2 все клики",
-                organizerDesc: "x3 все клики",
-                owned: "Куплено"
-            },
-            en: {
-                title: "SQUID CLICKER",
-                loading: "Loading game...",
-                money: "💰",
-                level: "🏆",
-                cps: "⚡",
-                perSecond: "/sec",
-                levelText: "Level",
-                soldier: "Pink Soldier",
-                guards: "Squad of Guards",
-                elite: "Elite Guard",
-                frontman: "Frontman",
-                organizer: "Organizer",
-                newLevel: "NEW LEVEL!",
-                reachedLevel: "You reached level",
-                character: "Character",
-                continue: "Continue",
-                clickDesc: "+0.1 click/sec",
-                guardsDesc: "+0.5 click/sec",
-                eliteDesc: "+1 click/sec",
-                frontmanDesc: "x2 all clicks",
-                organizerDesc: "x3 all clicks",
-                owned: "Owned"
-            }
-        };
-
-        function applyLanguageSettings() {
-            const lang = translations[gameLanguage] || translations.ru;
-            
-            // Обновляем элементы интерфейса
-            const elements = {
-                '.title': lang.title,
-                '.loading-text': lang.loading,
-                '#upgrade-1-name': lang.soldier,
-                '#upgrade-2-name': lang.guards,
-                '#upgrade-3-name': lang.elite,
-                '#upgrade-4-name': lang.frontman,
-                '#upgrade-5-name': lang.organizer,
-                '#upgrade-1-desc': lang.clickDesc,
-                '#upgrade-2-desc': lang.guardsDesc,
-                '#upgrade-3-desc': lang.eliteDesc,
-                '#upgrade-4-desc': lang.frontmanDesc,
-                '#upgrade-5-desc': lang.organizerDesc,
-                '.level-text': lang.levelText,
-                '#new-level': lang.reachedLevel,
-                '.character-button': lang.character,
-                '.continue-button': lang.continue
-            };
-            
-            for (const [selector, text] of Object.entries(elements)) {
-                const element = document.querySelector(selector);
-                if (element) element.textContent = text;
-            }
-        }
-
-        // Инициализация игры через Яндекс SDK
-        async function initYandexSDK() {
-            try {
-                ysdk = await YaGames.init();
-                console.log('Yandex SDK initialized');
-                
-                // Определяем язык из SDK
-                gameLanguage = ysdk.environment.i18n.lang || 'ru';
-                applyLanguageSettings();
-                
-                // Инициализируем аудио
-                await initAudio();
-                
-                // Запускаем игру
-                initGame();
-            } catch (err) {
-                console.error('Failed to initialize Yandex SDK:', err);
-                // Запасной вариант инициализации
-                await initAudio();
-                initGame();
-            }
-        }
 
         // Игровые переменные
         let gameState = {
@@ -868,6 +770,28 @@
         const loadingBar = document.getElementById('loading-bar');
         const soundToggle = document.getElementById('sound-toggle');
 
+        // Инициализация Яндекс SDK
+        async function initYandexSDK() {
+            try {
+                ysdk = await YaGames.init();
+                console.log('Yandex SDK initialized');
+                
+                // Определяем язык из SDK
+                gameLanguage = ysdk.environment.i18n.lang || 'ru';
+                
+                // Инициализируем аудио
+                await initAudio();
+                
+                // Запускаем игру
+                initGame();
+            } catch (err) {
+                console.error('Failed to initialize Yandex SDK:', err);
+                // Запасной вариант инициализации
+                await initAudio();
+                initGame();
+            }
+        }
+
         // Инициализация игры
         function initGame() {
             // Симулируем загрузку
@@ -902,8 +826,12 @@
             // Обновление UI
             updateUI();
             
-            // Запуск музыки
-            toggleSoundUI();
+            // Включаем музыку если она разрешена
+            if (gameState.musicEnabled) {
+                playSound('background', true);
+            } else {
+                soundToggle.classList.add('muted');
+            }
         }
 
         // Настройка обработчиков событий
@@ -1203,28 +1131,6 @@
             }
         }
 
-        // Переключение звука
-        function toggleSound() {
-            gameState.audioEnabled = !gameState.audioEnabled;
-            gameState.musicEnabled = gameState.audioEnabled;
-            toggleSoundUI();
-            saveGame();
-        }
-
-        // Обновление UI звука
-        function toggleSoundUI() {
-            if (gameState.musicEnabled) {
-                playSound('background');
-                soundToggle.classList.remove('muted');
-            } else {
-                if (backgroundMusicSource) {
-                    backgroundMusicSource.stop();
-                    backgroundMusicSource = null;
-                }
-                soundToggle.classList.add('muted');
-            }
-        }
-
         // Обновление UI
         function updateUI() {
             moneyCounter.textContent = formatNumber(gameState.money);
@@ -1333,7 +1239,9 @@
             gameState.cps = calculateCPS();
             
             // Обновление UI звука
-            toggleSoundUI();
+            if (!gameState.musicEnabled) {
+                soundToggle.classList.add('muted');
+            }
         }
 
         // Сохранение игры
