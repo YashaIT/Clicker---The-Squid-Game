@@ -7,6 +7,14 @@
     <script src="https://yandex.ru/games/sdk/v2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
+
+        .yandex-context-menu {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
         :root {
             --red: #FF0000;
             --pink: #FF6B6B;
@@ -111,10 +119,55 @@
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
+            background: none !important;
+            position: relative;
             cursor: pointer;
             transition: transform 0.1s;
             position: relative;
             z-index: 5;
+            -webkit-tap-highlight-color: transparent; /* Убирает подсветку при клике */
+            -webkit-touch-callout: none; /* Отключает контекстное меню на iOS */
+            user-select: none; /* Блокирует выделение текста */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            -webkit-user-drag: none;
+            -khtml-user-drag: none;
+            -moz-user-drag: none;
+            -o-user-drag: none;
+            -webkit-touch-callout: none;
+            user-drag: none;
+            pointer-events: auto; /* Важно: разрешаем события указателя */
+
+        }
+
+        #click-target::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            pointer-events: none; /* чтобы клики шли на сам target */
+        }
+
+        #click-target.char-1::before {
+            background-image: url('images/character1.png');
+        }
+
+        #click-target.char-2::before {
+            background-image: url('images/character2.png');
+        }
+
+        #click-target.char-3::before {
+            background-image: url('images/character3.png');
+        }
+
+         #click-target.char-4::before {
+            background-image: url('images/character4.png');
         }
 
         @media (min-width: 768px) {
@@ -442,6 +495,7 @@
 
         .float {
             animation: float 3s ease-in-out infinite;
+            
         }
 
         #background-select {
@@ -513,8 +567,9 @@
 
             <!-- Область кликов -->
             <div class="click-area">
-                <div id="click-target" class="float"></div>
+                <div id="click-target" class="float char-1" oncontextmenu="return false"></div>
                 <div id="click-effect-container"></div>
+               
             </div>
 
             <!-- Улучшения -->
@@ -594,16 +649,19 @@
     </div>
 
     <script>
-        // Блокировка контекстного меню и выделения
-        document.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-            return false;
-        }, { passive: false });
+        
+        
 
-        document.addEventListener('selectstart', function(e) {
-            e.preventDefault();
-            return false;
-        }, { passive: false });
+        // ===== Блокировка контекстного меню и выделения ===== //
+        document.addEventListener('contextmenu', (e) => e.preventDefault()); // Правая кнопка мыши
+        document.addEventListener('selectstart', (e) => e.preventDefault()); // Выделение текста
+        document.addEventListener('touchstart', (e => { // Долгое нажатие на мобильных
+            if (e.target === clickTarget || e.target.parentNode === clickTarget) {
+                e.preventDefault();
+            }
+        }), { passive: false });
+
+        
 
         // ==================== Web Audio API Implementation ====================
         let audioContext;
@@ -836,9 +894,54 @@
 
         // Настройка обработчиков событий
         function setupEventListeners() {
-            // Обработчики кликов с поддержкой touch
-            clickTarget.addEventListener('click', handleClick);
-            clickTarget.addEventListener('touchstart', handleClick, { passive: true });
+    // Отключаем drag и контекстное меню Яндекса
+    clickTarget.setAttribute('draggable', 'false');
+    clickTarget.style.webkitUserDrag = 'none';
+    clickTarget.style.userDrag = 'none';
+    clickTarget.addEventListener('dragstart', e => e.preventDefault());
+
+    // ПКМ и контекстное меню
+    clickTarget.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    });
+
+    // ЛКМ
+    clickTarget.addEventListener('mousedown', e => {
+        if (e.button === 0) {
+            handleClick();
+        } else {
+            e.preventDefault(); // блок ПКМ
+        }
+    });
+
+    // Долгий тап
+    let touchTimer;
+    clickTarget.addEventListener('touchstart', e => {
+        handleClick();
+        touchTimer = setTimeout(() => e.preventDefault(), 300);
+    }, { passive: false });
+
+    clickTarget.addEventListener('touchend', () => clearTimeout(touchTimer), { passive: true });
+}
+
+            
+
+            clickTarget.addEventListener('touchstart', (e) => {
+                handleClick();
+                e.preventDefault(); // Блокируем контекстное меню
+            }, { passive: false });
+
+            clickTarget.addEventListener('touchend', (e) => {
+                e.preventDefault(); // Блокируем контекстное меню
+            }, { passive: false });
+
+            clickTarget.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            });
             
             // Блокировка масштабирования на мобильных устройствах
             document.addEventListener('gesturestart', function(e) {
@@ -854,7 +957,7 @@
                 }
                 lastTouchTime = now;
             }, { passive: false });
-        }
+        
 
         // Обработка клика
         function handleClick() {
@@ -1080,6 +1183,7 @@
             }
         }
 
+
         // Проверка достижений
         function checkAchievements() {
             if (ysdk && ysdk.features.Achievements) {
@@ -1103,8 +1207,7 @@
         function selectCharacter(id) {
             if (gameState.unlockedCharacters.includes(id)) {
                 gameState.selectedCharacter = id;
-                const character = characters.find(c => c.id === id);
-                clickTarget.style.backgroundImage = `url('${character.image}')`;
+                clickTarget.className = `float char-${id}`;
                 saveGame();
                 
                 // Обновление выбранного персонажа в UI
@@ -1229,6 +1332,11 @@
             if (character) {
                 clickTarget.style.backgroundImage = `url('${character.image}')`;
             }
+
+            clickTarget.setAttribute('oncontextmenu', 'return false'); // Блокировка контекстного меню
+            clickTarget.style.touchAction = 'manipulation'; // Оптимизация для тач-устройств
+            
+
             
             const background = backgrounds.find(b => b.id === gameState.selectedBackground);
             if (background) {
