@@ -655,11 +655,11 @@
         // ===== Блокировка контекстного меню и выделения ===== //
         document.addEventListener('contextmenu', (e) => e.preventDefault()); // Правая кнопка мыши
         document.addEventListener('selectstart', (e) => e.preventDefault()); // Выделение текста
-        document.addEventListener('touchstart', (e => { // Долгое нажатие на мобильных
-            if (e.target === clickTarget || e.target.parentNode === clickTarget) {
-                e.preventDefault();
-            }
-        }), { passive: false });
+        document.addEventListener('touchstart', e => {
+    if (e.target.closest('#game-container')) {
+        e.preventDefault();
+    }
+}, { passive: false });
 
         
 
@@ -949,13 +949,13 @@
             }, { passive: false });
             
             // Блокировка двойного тапа для масштабирования
-            let lastTouchTime = 0;
-            document.addEventListener('touchend', function(event) {
-                const now = new Date().getTime();
-                if (now - lastTouchTime <= 300) {
-                    event.preventDefault();
+            let lastTouch = 0;
+            document.addEventListener('touchend', e => {
+                const now = Date.now();
+                if (now - lastTouch <= 300) {
+                    e.preventDefault();
                 }
-                lastTouchTime = now;
+                lastTouch = now;
             }, { passive: false });
         
 
@@ -1418,16 +1418,27 @@
         // Обработчик видимости страницы для GameplayAPI
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                stopGame();
-            } else {
-                startGame();
-            }
+        stopGame();
+        if (backgroundMusicNode) {
+            backgroundMusicNode.stop();
+            backgroundMusicNode = null;
+        }
+    } else {
+        startGame();
+        if (gameState.musicEnabled) {
+            playSound('background', true);
+        }
+    }
         });
 
         // При закрытии страницы
         window.addEventListener('beforeunload', () => {
             stopGame();
-            saveGame();
+    if (backgroundMusicNode) {
+        backgroundMusicNode.stop();
+        backgroundMusicNode = null;
+    }
+    saveGame();
         });
 
         // Инициализация игры через Яндекс SDK
